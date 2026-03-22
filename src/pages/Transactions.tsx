@@ -1,14 +1,50 @@
 import { motion } from "framer-motion";
-import { transactions } from "@/lib/mock-data";
-import { ArrowUpRight, ArrowDownRight, Plus } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import AddTransactionDialog from "@/components/AddTransactionDialog";
+import { toast } from "sonner";
+
+type Transaction = {
+  id: string;
+  date: string;
+  description: string;
+  category: string;
+  amount: number;
+  type: string;
+};
 
 export default function Transactions() {
   const [filter, setFilter] = useState<"all" | "income" | "expense">("all");
-  const filtered = filter === "all" ? transactions : transactions.filter((t) => t.type === filter);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  const fetchTransactions = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("*")
+      .order("date", { ascending: false });
+    if (error) toast.error("Failed to load transactions");
+    else setTransactions(data || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
+
+  // Realtime subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel("transactions-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "transactions" }, () => {
+        fetchTransactions();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchTransactions]);
+
+  const filtered = filter === "all" ? transactions : transactions.filter((t) => t.type === filter);
   const totalIncome = transactions.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
   const totalExpenses = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
 
@@ -19,12 +55,9 @@ export default function Transactions() {
           <h2 className="font-display text-2xl font-bold text-foreground">Transactions</h2>
           <p className="text-sm text-muted-foreground mt-1">Track income, expenses, and financial records</p>
         </div>
-        <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 self-start">
-          <Plus className="h-4 w-4" /> Add Transaction
-        </Button>
+        <AddTransactionDialog onAdded={fetchTransactions} />
       </div>
 
-      {/* Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <motion.div className="glow-card-success p-4" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <p className="metric-label">Total Income</p>
@@ -40,58 +73,47 @@ export default function Transactions() {
         </motion.div>
       </div>
 
-      {/* Filter */}
       <div className="flex gap-2">
         {(["all", "income", "expense"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
-              filter === f ? "bg-primary text-primary-foreground" : "bg-accent text-muted-foreground hover:text-foreground"
-            )}
-          >
+          <button key={f} onClick={() => setFilter(f)} className={cn("px-3 py-1.5 rounded-lg text-sm font-medium transition-colors", filter === f ? "bg-primary text-primary-foreground" : "bg-accent text-muted-foreground hover:text-foreground")}>
             {f.charAt(0).toUpperCase() + f.slice(1)}
           </button>
         ))}
       </div>
 
-      {/* Table */}
       <motion.div className="glow-card overflow-hidden" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left p-4 text-muted-foreground font-medium">Date</th>
-                <th className="text-left p-4 text-muted-foreground font-medium">Description</th>
-                <th className="text-left p-4 text-muted-foreground font-medium">Category</th>
-                <th className="text-right p-4 text-muted-foreground font-medium">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((t) => (
-                <tr key={t.id} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
-                  <td className="p-4 text-muted-foreground">{t.date}</td>
-                  <td className="p-4 text-foreground">{t.description}</td>
-                  <td className="p-4">
-                    <span className="rounded-md bg-accent px-2 py-1 text-xs text-muted-foreground">{t.category}</span>
-                  </td>
-                  <td className="p-4 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {t.type === "income" ? (
-                        <ArrowUpRight className="h-4 w-4 text-secondary" />
-                      ) : (
-                        <ArrowDownRight className="h-4 w-4 text-destructive" />
-                      )}
-                      <span className={cn("font-medium", t.type === "income" ? "text-secondary" : "text-destructive")}>
-                        ${t.amount.toLocaleString()}
-                      </span>
-                    </div>
-                  </td>
+          {loading ? (
+            <p className="p-8 text-center text-muted-foreground">Loading transactions...</p>
+          ) : filtered.length === 0 ? (
+            <p className="p-8 text-center text-muted-foreground">No transactions yet. Add one to get started!</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left p-4 text-muted-foreground font-medium">Date</th>
+                  <th className="text-left p-4 text-muted-foreground font-medium">Description</th>
+                  <th className="text-left p-4 text-muted-foreground font-medium">Category</th>
+                  <th className="text-right p-4 text-muted-foreground font-medium">Amount</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map((t) => (
+                  <tr key={t.id} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
+                    <td className="p-4 text-muted-foreground">{t.date}</td>
+                    <td className="p-4 text-foreground">{t.description}</td>
+                    <td className="p-4"><span className="rounded-md bg-accent px-2 py-1 text-xs text-muted-foreground">{t.category}</span></td>
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {t.type === "income" ? <ArrowUpRight className="h-4 w-4 text-secondary" /> : <ArrowDownRight className="h-4 w-4 text-destructive" />}
+                        <span className={cn("font-medium", t.type === "income" ? "text-secondary" : "text-destructive")}>${t.amount.toLocaleString()}</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </motion.div>
     </div>
