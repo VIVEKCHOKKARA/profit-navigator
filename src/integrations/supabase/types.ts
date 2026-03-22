@@ -14,7 +14,123 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          role: string
+          session_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          role: string
+          session_id?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          role?: string
+          session_id?: string
+        }
+        Relationships: []
+      }
+      forecasts: {
+        Row: {
+          confidence: number
+          created_at: string
+          id: string
+          period: string
+          predicted_expenses: number
+          predicted_revenue: number
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string
+          id?: string
+          period: string
+          predicted_expenses: number
+          predicted_revenue: number
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          id?: string
+          period?: string
+          predicted_expenses?: number
+          predicted_revenue?: number
+        }
+        Relationships: []
+      }
+      products: {
+        Row: {
+          category: string
+          cluster: string
+          created_at: string
+          id: string
+          name: string
+          price: number
+          revenue: number
+          trend: string
+          units_sold: number
+        }
+        Insert: {
+          category: string
+          cluster?: string
+          created_at?: string
+          id?: string
+          name: string
+          price: number
+          revenue?: number
+          trend?: string
+          units_sold?: number
+        }
+        Update: {
+          category?: string
+          cluster?: string
+          created_at?: string
+          id?: string
+          name?: string
+          price?: number
+          revenue?: number
+          trend?: string
+          units_sold?: number
+        }
+        Relationships: []
+      }
+      transactions: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          date: string
+          description: string
+          id: string
+          type: string
+        }
+        Insert: {
+          amount: number
+          category: string
+          created_at?: string
+          date: string
+          description: string
+          id?: string
+          type: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          date?: string
+          description?: string
+          id?: string
+          type?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
