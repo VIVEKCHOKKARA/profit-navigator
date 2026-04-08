@@ -7,6 +7,8 @@ import {
   Lightbulb,
   BarChart3,
   ShoppingBag,
+  MessageSquare,
+  Wand2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,6 +28,8 @@ export const navItems: NavItem[] = [
   { title: "Products", url: "/products", icon: ShoppingBag, roles: ["owner", "manager", "analyst"] },
   { title: "Anomalies", url: "/anomalies", icon: AlertTriangle, roles: ["owner", "analyst"] },
   { title: "Pricing", url: "/pricing", icon: DollarSign, roles: ["owner", "manager"] },
+  { title: "AI Advisor", url: "/chat", icon: MessageSquare, roles: ["owner", "manager", "analyst"] },
+  { title: "Profit Simulator", url: "/simulate", icon: Wand2, roles: ["owner", "analyst"] },
   { title: "AI Insights", url: "/insights", icon: Lightbulb, roles: ["owner", "manager", "analyst"] },
 ];
 

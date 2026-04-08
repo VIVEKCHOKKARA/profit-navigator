@@ -1,11 +1,11 @@
 import { motion } from "framer-motion";
-import { anomalies } from "@/lib/mock-data";
+import { useAnomalies } from "@/hooks/useAnomalies";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { AlertTriangle, TrendingUp, TrendingDown, Activity, Loader2 } from "lucide-react";
 
 const severityStyles: Record<string, string> = {
   high: "glow-card-alert animate-pulse-glow",
-  medium: "glow-card",
+  medium: "glow-card border-amber-500/50",
   low: "glow-card",
 };
 
@@ -16,19 +16,39 @@ const typeIcons: Record<string, any> = {
 };
 
 export default function Anomalies() {
+  const { anomalies, loading } = useAnomalies();
+
+  if (loading) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-12">
+        <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground animate-pulse">Running AI pattern matching algorithms...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="font-display text-2xl font-bold text-foreground">Anomaly Detection</h2>
-        <p className="text-sm text-muted-foreground mt-1">AI-identified unusual patterns and financial risks</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="font-display text-2xl font-bold text-foreground">Anomaly Detection</h2>
+          <p className="text-sm text-muted-foreground mt-1">AI-identified unusual patterns and financial risks</p>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 rounded-lg bg-accent/50 p-3">
-        <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
-        <p className="text-sm text-muted-foreground">
-          <strong className="text-foreground">{anomalies.filter((a) => a.severity === "high").length} critical alert(s)</strong> require immediate attention.
-        </p>
-      </div>
+      {anomalies.length > 0 ? (
+        <div className="flex items-center gap-2 rounded-lg bg-accent/50 p-3">
+          <AlertTriangle className={cn("h-5 w-5 shrink-0", anomalies.some(a => a.severity === "high") ? "text-destructive" : "text-amber-500")} />
+          <p className="text-sm text-muted-foreground">
+            <strong className="text-foreground">{anomalies.filter((a) => a.severity === "high").length} critical alert(s)</strong> require immediate attention.
+          </p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-4">
+          <Activity className="h-5 w-5 text-emerald-500 shrink-0" />
+          <p className="text-sm text-emerald-500">All financial patterns are within normal operational parameters. No anomalies detected.</p>
+        </div>
+      )}
 
       <div className="space-y-4">
         {anomalies.map((a, i) => {
@@ -52,9 +72,9 @@ export default function Anomalies() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-display text-base font-semibold text-foreground">{a.metric}</h3>
                     <span className={cn(
-                      "rounded-md px-2 py-0.5 text-xs font-medium",
+                      "rounded-md px-2 py-0.5 text-xs font-medium uppercase tracking-wider",
                       a.severity === "high" && "bg-destructive/20 text-destructive",
-                      a.severity === "medium" && "bg-primary/20 text-primary",
+                      a.severity === "medium" && "bg-amber-500/20 text-amber-500",
                       a.severity === "low" && "bg-accent text-muted-foreground",
                     )}>
                       {a.severity}
@@ -65,17 +85,17 @@ export default function Anomalies() {
                   <div className="flex gap-6 mt-2 text-sm">
                     <div>
                       <span className="text-muted-foreground">Actual: </span>
-                      <span className="font-medium text-foreground">{a.value.toLocaleString()}</span>
+                      <span className="font-medium text-foreground">${a.value.toLocaleString()}</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Expected: </span>
-                      <span className="font-medium text-foreground">{a.expected.toLocaleString()}</span>
+                      <span className="text-muted-foreground">Baseline: </span>
+                      <span className="font-medium text-foreground">${a.expected.toLocaleString()}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Deviation: </span>
                       <span className={cn("font-medium", a.type === "spike" ? "text-destructive" : "text-primary")}>
                         {a.type === "drop" ? "-" : "+"}
-                        {Math.abs(Math.round(((a.value - a.expected) / a.expected) * 100))}%
+                        {a.expected > 0 ? Math.abs(Math.round(((a.value - a.expected) / a.expected) * 100)) : 100}%
                       </span>
                     </div>
                   </div>
@@ -88,3 +108,4 @@ export default function Anomalies() {
     </div>
   );
 }
+

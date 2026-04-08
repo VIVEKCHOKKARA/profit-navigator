@@ -88,6 +88,11 @@
     @apply border border-border bg-card rounded-xl;
   }
 
+  .glass-card {
+    @apply border border-white/10 bg-white/[0.03] backdrop-blur-xl rounded-xl;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  }
+
   .metric-value {
     @apply font-display text-3xl font-bold tracking-tight;
   }

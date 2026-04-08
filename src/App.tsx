@@ -11,6 +11,8 @@ import Products from "@/pages/Products";
 import Anomalies from "@/pages/Anomalies";
 import Pricing from "@/pages/Pricing";
 import Insights from "@/pages/Insights";
+import Chat from "@/pages/Chat";
+import Simulate from "@/pages/Simulate";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +32,8 @@ const App = () => (
             <Route path="/anomalies" element={<Anomalies />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/insights" element={<Insights />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/simulate" element={<Simulate />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </DashboardLayout>
