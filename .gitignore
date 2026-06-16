@@ -27,3 +27,7 @@ __pycache__/
 *.njsproj
 *.sln
 *.sw?
+
+# Temporary files and test results
+tmp/
+test-results/

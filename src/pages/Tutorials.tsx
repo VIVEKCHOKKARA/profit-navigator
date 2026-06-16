@@ -129,8 +129,15 @@ const uiText: Record<Language, {
   },
 };
 
-const getLocalizedText = (text: string | null | undefined, lang: Language): string => {
+const getLocalizedText = (
+  text: string | Record<string, string> | null | undefined,
+  lang: Language
+): string => {
   if (!text) return "";
+  // Already-parsed localized object (e.g. category metadata).
+  if (typeof text === "object") {
+    return text[lang] || text["en"] || "";
+  }
   const trimmed = text.trim();
   if (trimmed.startsWith("{")) {
     try {
