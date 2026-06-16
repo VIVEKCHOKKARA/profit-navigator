@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { createTransaction } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,22 +30,23 @@ export default function AddTransactionDialog({ onAdded }: Props) {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.from("transactions").insert({
-      date: form.date,
-      description: form.description,
-      category: form.category,
-      amount: parseFloat(form.amount),
-      type: form.type,
-    });
-    setLoading(false);
-    if (error) {
-      toast.error("Failed to add transaction");
-    } else {
+    try {
+      await createTransaction({
+        date: form.date,
+        description: form.description,
+        category: form.category,
+        amount: parseFloat(form.amount),
+        type: form.type,
+      });
       toast.success("Transaction added!");
       setForm({ date: new Date().toISOString().split("T")[0], description: "", category: "", amount: "", type: "income" });
       setOpen(false);
       onAdded();
+    } catch (err: any) {
+      console.error("Insert Error:", err);
+      toast.error(`Failed to add transaction: ${err.message || "Unknown error"}`);
     }
+    setLoading(false);
   };
 
   return (

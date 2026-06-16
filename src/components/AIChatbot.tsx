@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { fetchChatHistory, saveChatMessage, getChatStreamUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 const SESSION_ID = "default";
 
 export default function AIChatbot({ fullHeight = false }: { fullHeight?: boolean }) {
@@ -20,16 +19,16 @@ export default function AIChatbot({ fullHeight = false }: { fullHeight?: boolean
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load history from DB on mount
+  // Load history from API on mount
   useEffect(() => {
     const loadHistory = async () => {
-      const { data } = await supabase
-        .from("chat_messages")
-        .select("role, content")
-        .eq("session_id", SESSION_ID)
-        .order("created_at", { ascending: true });
-      if (data && data.length > 0) {
-        setMessages(data.map(d => ({ role: d.role as "user" | "assistant", content: d.content })));
+      try {
+        const data = await fetchChatHistory(SESSION_ID);
+        if (data && data.length > 0) {
+          setMessages(data.map(d => ({ role: d.role as "user" | "assistant", content: d.content })));
+        }
+      } catch (err) {
+        console.error("Failed to load chat history:", err);
       }
     };
     loadHistory();
@@ -39,10 +38,6 @@ export default function AIChatbot({ fullHeight = false }: { fullHeight?: boolean
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const saveMessage = async (role: string, content: string) => {
-    await supabase.from("chat_messages").insert({ role, content, session_id: SESSION_ID });
-  };
-
   const send = async () => {
     if (!input.trim() || isLoading) return;
     const userMsg: Msg = { role: "user", content: input.trim() };
@@ -50,17 +45,16 @@ export default function AIChatbot({ fullHeight = false }: { fullHeight?: boolean
     setMessages(newMessages);
     setInput("");
     setIsLoading(true);
-    await saveMessage("user", userMsg.content);
+    await saveChatMessage("user", userMsg.content, SESSION_ID);
 
     let assistantSoFar = "";
     try {
-      const resp = await fetch(CHAT_URL, {
+      const resp = await fetch(getChatStreamUrl(), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ messages: newMessages }),
+        body: JSON.stringify({ messages: newMessages, session_id: SESSION_ID }),
       });
 
       if (!resp.ok) {
@@ -86,29 +80,36 @@ export default function AIChatbot({ fullHeight = false }: { fullHeight?: boolean
           if (!line.startsWith("data: ")) continue;
           const jsonStr = line.slice(6).trim();
           if (jsonStr === "[DONE]") break;
+          // Parse only the JSON here — a parse failure means a partial chunk,
+          // so re-buffer and wait for more data.
+          let parsed: any;
           try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              assistantSoFar += content;
-              setMessages(prev => {
-                const last = prev[prev.length - 1];
-                if (last?.role === "assistant") {
-                  return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantSoFar } : m);
-                }
-                return [...prev, { role: "assistant", content: assistantSoFar }];
-              });
-            }
+            parsed = JSON.parse(jsonStr);
           } catch {
             textBuffer = line + "\n" + textBuffer;
             break;
           }
+          // Backend streams { error } when the model call fails (e.g. bad/missing
+          // GROQ_API_KEY). HTTP status is still 200, so surface it as a thrown error
+          // (handled by the outer try/catch -> toast) rather than re-buffering it.
+          if (parsed.error) {
+            throw new Error(parsed.error);
+          }
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) {
+            assistantSoFar += content;
+            setMessages(prev => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant") {
+                return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantSoFar } : m);
+              }
+              return [...prev, { role: "assistant", content: assistantSoFar }];
+            });
+          }
         }
       }
 
-      if (assistantSoFar) {
-        await saveMessage("assistant", assistantSoFar);
-      }
+      // Assistant message is saved server-side by Flask
     } catch (e: any) {
       toast.error(e.message || "Failed to get AI response");
     } finally {
@@ -133,7 +134,7 @@ export default function AIChatbot({ fullHeight = false }: { fullHeight?: boolean
         <h3 className="font-display text-base font-semibold text-foreground">AI Business Consulting</h3>
         {fullHeight && (
           <span className="ml-auto text-xs font-medium text-muted-foreground uppercase tracking-widest px-2 py-0.5 rounded bg-primary/10 border border-primary/20">
-            Enterprise Model
+            Groq Llama 3.3 · Multilingual
           </span>
         )}
       </div>
@@ -147,7 +148,7 @@ export default function AIChatbot({ fullHeight = false }: { fullHeight?: boolean
               </div>
               <h4 className="text-lg font-semibold mb-2">How can I help your business today?</h4>
               <p className="text-sm text-muted-foreground max-w-sm">
-                Ask about sales trends, inventory management, or pricing optimization based on your real data.
+                Ask in any language — Telugu, Hindi, Tamil, English, or Spanish. The AI will reply in the same language.
               </p>
             </div>
           )}
@@ -202,7 +203,7 @@ export default function AIChatbot({ fullHeight = false }: { fullHeight?: boolean
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder="Ask about your business data, trends, or strategy..."
+            placeholder="Ask in any language — Telugu, Hindi, Tamil, English..."
             className="flex-1 bg-background h-12 shadow-inner border-border focus:ring-primary"
             disabled={isLoading}
           />
@@ -212,7 +213,7 @@ export default function AIChatbot({ fullHeight = false }: { fullHeight?: boolean
         </div>
         {fullHeight && (
           <p className="text-[10px] text-muted-foreground text-center mt-4 uppercase tracking-widest font-bold opacity-50">
-            Powered by GPT-4 Financial Engine
+            Powered by Groq Llama 3.3 · తెలుగు · हिंदी · English
           </p>
         )}
       </div>

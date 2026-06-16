@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { fetchTransactions } from "@/lib/api";
 
 export type Anomaly = {
   id: string;
@@ -75,15 +75,16 @@ export function useAnomalies() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from("transactions").select("*");
+    const data = await fetchTransactions();
     if (data) setAnomalies(detectAnomalies(data));
     setLoading(false);
   }, [detectAnomalies]);
 
   useEffect(() => {
     fetchData();
-    const sub = supabase.channel('anomaly-sync').on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, fetchData).subscribe();
-    return () => { supabase.removeChannel(sub); };
+    // Poll every 30 seconds instead of Supabase realtime
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
   }, [fetchData]);
 
   return { anomalies, loading };

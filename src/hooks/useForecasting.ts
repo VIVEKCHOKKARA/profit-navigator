@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { fetchTransactions } from "@/lib/api";
 import { performLinearRegression, predictFuture } from "@/lib/ml";
 
 export type ForecastResult = {
@@ -25,13 +25,9 @@ export function useForecasting() {
         setLoading(true);
         setError(null);
         try {
-            // Fetch transactions
-            const { data: transactions, error: tError } = await supabase
-                .from("transactions")
-                .select("*")
-                .order("date", { ascending: true });
+            // Fetch transactions from API
+            const transactions = await fetchTransactions();
 
-            if (tError) throw tError;
             if (!transactions || transactions.length === 0) {
                 setLoading(false);
                 return;
@@ -41,7 +37,6 @@ export function useForecasting() {
             const monthlyData: Record<string, { income: number; expense: number }> = {};
             transactions.forEach(t => {
                 const date = new Date(t.date);
-                const month = date.toLocaleString('default', { month: 'short', year: '2-digit' });
                 const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
 
                 if (!monthlyData[monthKey]) {
@@ -77,7 +72,6 @@ export function useForecasting() {
             });
 
             // Last historical point to connect lines
-            const lastHistoricalValue = revenues[n - 1];
             const lastHistoricalDate = new Date(monthKeys[n - 1] + "-01");
 
             const forecastPoints: ChartPoint[] = [];
@@ -102,10 +96,6 @@ export function useForecasting() {
                 });
             }
 
-            // To connect the actual and forecast lines in Recharts, 
-            // the first forecast point should have its 'actual' as the last historical 'actual'
-            // or we can just overlay them.
-
             setChartData([...historicalPoints, ...forecastPoints]);
             setForecasts(newForecasts);
 
@@ -119,15 +109,9 @@ export function useForecasting() {
 
     useEffect(() => {
         calculateForecast();
-
-        // Subscribe to changes
-        const channel = supabase.channel('forecasting-updates')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, calculateForecast)
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        // Poll every 30 seconds instead of Supabase realtime
+        const interval = setInterval(calculateForecast, 30000);
+        return () => clearInterval(interval);
     }, [calculateForecast]);
 
     return { loading, chartData, forecasts, error, refresh: calculateForecast };

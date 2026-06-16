@@ -9,6 +9,9 @@ import {
   ShoppingBag,
   MessageSquare,
   Wand2,
+  PlayCircle,
+  Upload,
+  Lock,
   type LucideIcon,
 } from "lucide-react";
 
@@ -27,10 +30,13 @@ export const navItems: NavItem[] = [
   { title: "Forecasting", url: "/forecasting", icon: TrendingUp, roles: ["owner", "analyst"] },
   { title: "Products", url: "/products", icon: ShoppingBag, roles: ["owner", "manager", "analyst"] },
   { title: "Anomalies", url: "/anomalies", icon: AlertTriangle, roles: ["owner", "analyst"] },
-  { title: "Pricing", url: "/pricing", icon: DollarSign, roles: ["owner", "manager"] },
+  { title: "Pricing", url: "/pricing", icon: DollarSign, roles: ["owner", "manager", "analyst"] },
   { title: "AI Advisor", url: "/chat", icon: MessageSquare, roles: ["owner", "manager", "analyst"] },
   { title: "Profit Simulator", url: "/simulate", icon: Wand2, roles: ["owner", "analyst"] },
   { title: "AI Insights", url: "/insights", icon: Lightbulb, roles: ["owner", "manager", "analyst"] },
+  { title: "Tutorials", url: "/tutorials", icon: PlayCircle, roles: ["owner", "manager", "analyst"] },
+  { title: "Manage Tutorials", url: "/analyst-tutorials", icon: Upload, roles: ["analyst"] },
+  { title: "Page Access", url: "/analyst-visibility", icon: Lock, roles: ["analyst"] },
 ];
 
 export const roleLabels: Record<UserRole, string> = {

@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { fetchTransactions } from "@/lib/api";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
 import { toast } from "sonner";
 
@@ -20,29 +20,23 @@ export default function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchTransactions = useCallback(async () => {
+  const loadTransactions = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("*")
-      .order("date", { ascending: false });
-    if (error) toast.error("Failed to load transactions");
-    else setTransactions(data || []);
+    try {
+      const data = await fetchTransactions();
+      setTransactions(data || []);
+    } catch (err: any) {
+      toast.error("Failed to load transactions");
+    }
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
-
-  // Realtime subscription
   useEffect(() => {
-    const channel = supabase
-      .channel("transactions-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "transactions" }, () => {
-        fetchTransactions();
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [fetchTransactions]);
+    loadTransactions();
+    // Poll every 30 seconds instead of Supabase realtime
+    const interval = setInterval(loadTransactions, 30000);
+    return () => clearInterval(interval);
+  }, [loadTransactions]);
 
   const filtered = filter === "all" ? transactions : transactions.filter((t) => t.type === filter);
   const totalIncome = transactions.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
@@ -55,7 +49,7 @@ export default function Transactions() {
           <h2 className="font-display text-2xl font-bold text-foreground">Transactions</h2>
           <p className="text-sm text-muted-foreground mt-1">Track income, expenses, and financial records</p>
         </div>
-        <AddTransactionDialog onAdded={fetchTransactions} />
+        <AddTransactionDialog onAdded={loadTransactions} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

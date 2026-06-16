@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { createProduct } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,24 +33,25 @@ export default function AddProductDialog({ onAdded }: Props) {
     setLoading(true);
     const price = parseFloat(form.price);
     const units_sold = parseInt(form.units_sold || "0");
-    const { error } = await supabase.from("products").insert({
-      name: form.name,
-      category: form.category,
-      price,
-      units_sold,
-      revenue: price * units_sold,
-      trend: form.trend,
-      cluster: form.cluster,
-    });
-    setLoading(false);
-    if (error) {
-      toast.error("Failed to add product");
-    } else {
+    try {
+      await createProduct({
+        name: form.name,
+        category: form.category,
+        price,
+        units_sold,
+        revenue: price * units_sold,
+        trend: form.trend,
+        cluster: form.cluster,
+      });
       toast.success("Product added!");
       setForm({ name: "", category: "", price: "", units_sold: "", trend: "stable", cluster: "question-mark" });
       setOpen(false);
       onAdded();
+    } catch (err: any) {
+      console.error("Insert Error:", err);
+      toast.error(`Failed to add product: ${err.message || "Unknown error"}`);
     }
+    setLoading(false);
   };
 
   return (

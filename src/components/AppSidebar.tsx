@@ -1,8 +1,11 @@
 import { useLocation } from "react-router-dom";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { NavLink } from "@/components/NavLink";
 import { ChevronDown, Zap } from "lucide-react";
 import { navItems, roleLabels, type UserRole } from "@/lib/navigation";
+import { useRole } from "@/contexts/RoleContext";
+import { fetchVisibility } from "@/lib/api";
+import { useRealtime } from "@/lib/socket";
 import {
   Sidebar,
   SidebarContent,
@@ -26,9 +29,35 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
-  const [role, setRole] = useState<UserRole>("owner");
+  const { role, setRole } = useRole();
 
-  const filteredItems = navItems.filter((item) => item.roles.includes(role));
+  // Pages the Analyst has explicitly hidden for the current role.
+  const [hiddenPages, setHiddenPages] = useState<Set<string>>(new Set());
+
+  const loadVisibility = useCallback(async () => {
+    // Visibility overrides only apply to owner/manager (the analyst sees all).
+    if (role === "analyst") {
+      setHiddenPages(new Set());
+      return;
+    }
+    try {
+      const rows = await fetchVisibility(role);
+      setHiddenPages(new Set(rows.filter((r) => !r.visible).map((r) => r.pageUrl)));
+    } catch {
+      setHiddenPages(new Set());
+    }
+  }, [role]);
+
+  useEffect(() => {
+    loadVisibility();
+  }, [loadVisibility]);
+
+  // Refetch when the Analyst toggles visibility from another session/tab.
+  useRealtime("visibility", loadVisibility);
+
+  const filteredItems = navItems.filter(
+    (item) => item.roles.includes(role) && !hiddenPages.has(item.url)
+  );
 
   return (
     <Sidebar collapsible="icon">

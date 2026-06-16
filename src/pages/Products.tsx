@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Minus, Star, DollarSign, HelpCircle, AlertTriangle } from "lucide-react";
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { fetchProducts } from "@/lib/api";
 import AddProductDialog from "@/components/AddProductDialog";
 import { toast } from "sonner";
 
@@ -33,23 +33,23 @@ export default function Products() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchProducts = useCallback(async () => {
+  const loadProducts = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase.from("products").select("*").order("revenue", { ascending: false });
-    if (error) toast.error("Failed to load products");
-    else setProducts(data || []);
+    try {
+      const data = await fetchProducts();
+      setProducts(data || []);
+    } catch (err: any) {
+      toast.error("Failed to load products");
+    }
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchProducts(); }, [fetchProducts]);
-
   useEffect(() => {
-    const channel = supabase
-      .channel("products-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => fetchProducts())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [fetchProducts]);
+    loadProducts();
+    // Poll every 30 seconds instead of Supabase realtime
+    const interval = setInterval(loadProducts, 30000);
+    return () => clearInterval(interval);
+  }, [loadProducts]);
 
   const scatterData = products.map(p => ({ x: p.units_sold, y: p.revenue, name: p.name, cluster: p.cluster }));
 
@@ -60,7 +60,7 @@ export default function Products() {
           <h2 className="font-display text-2xl font-bold text-foreground">Product Performance</h2>
           <p className="text-sm text-muted-foreground mt-1">Clustering analysis grouped by sales velocity and revenue</p>
         </div>
-        <AddProductDialog onAdded={fetchProducts} />
+        <AddProductDialog onAdded={loadProducts} />
       </div>
 
       <div className="flex flex-wrap gap-4">

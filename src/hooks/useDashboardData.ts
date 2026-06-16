@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { fetchTransactions, fetchProducts } from "@/lib/api";
 import { performLinearRegression, predictFuture } from "@/lib/ml";
 
 export type DashboardMetrics = {
@@ -51,16 +51,12 @@ export function useDashboardData(daysHistory = 7) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch all transactions and products
-      const [
-        { data: transactions, error: tError },
-        { data: products, error: pError }
-      ] = await Promise.all([
-        supabase.from("transactions").select("*").order("date", { ascending: true }),
-        supabase.from("products").select("*")
+      // Fetch all transactions and products from API
+      const [transactions, products] = await Promise.all([
+        fetchTransactions(),
+        fetchProducts(),
       ]);
 
-      if (tError || pError) throw tError || pError;
       if (!transactions || !products) return;
 
       // Calculate Metrics
@@ -121,9 +117,6 @@ export function useDashboardData(daysHistory = 7) {
       setRevenueTrend(Object.values(monthlyNodes).slice(-6));
 
       // Calculate daily sales and forecast
-      const dailyNodes: Record<string, number> = {};
-
-      // Ensure we have a continuous timeline for training (last 120 days)
       const trainingDays = 120;
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - trainingDays);
@@ -207,11 +200,9 @@ export function useDashboardData(daysHistory = 7) {
 
   useEffect(() => {
     fetchData();
-    const sub = supabase.channel('dashboard-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchData)
-      .subscribe();
-    return () => { supabase.removeChannel(sub); };
+    // Poll every 30 seconds instead of Supabase realtime
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
   }, [fetchData]);
 
   return { metrics, revenueTrend, dailySales, categoryBreakdown, loading };
