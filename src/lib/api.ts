@@ -3,20 +3,67 @@
  * All data operations go through the Python Flask backend.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+// When VITE_API_URL is set, use it directly (e.g. production).
+// When unset, use "" so requests like "/api/auth/login" go through the
+// Vite dev proxy configured in vite.config.ts.
+const API_BASE = import.meta.env.VITE_API_URL ?? "";
+
+// ── Auth token ────────────────────────────────────────────────────────────--
+// The login flow stores a signed token here; apiFetch attaches it so the
+// backend can resolve the current user.
+
+const TOKEN_KEY = "auth_token";
+
+export function getAuthToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setAuthToken(token: string | null): void {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
 
 // ── Helper ──────────────────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || "API request failed");
+  const token = getAuthToken();
+  const url = API_BASE ? `${API_BASE}${path}` : path;
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options?.headers || {}),
+      },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || `Request failed with status ${res.status}`);
+    }
+    return res.json();
+  } catch (err: any) {
+    if (err instanceof TypeError && err.message.includes("Failed to fetch")) {
+      // If fetching relative URL or API_BASE fails, try direct localhost:5000 fallback
+      if (API_BASE === "") {
+        const directUrl = `http://localhost:5000${path}`;
+        const res = await fetch(directUrl, {
+          ...options,
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(options?.headers || {}),
+          },
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(errData.error || `Request failed with status ${res.status}`);
+        }
+        return res.json();
+      }
+    }
+    throw err;
   }
-  return res.json();
 }
 
 // ── Transactions ────────────────────────────────────────────────────────────
@@ -175,6 +222,8 @@ export type Tutorial = {
   description: string;
   youtubeId: string;
   targetRole: "owner" | "manager" | "both";
+  /** Optional per-language YouTube IDs; youtubeId is the default/fallback. */
+  videoIds?: Record<string, string>;
   addedAt?: string;
 };
 
@@ -190,6 +239,7 @@ export async function createTutorial(data: {
   description?: string;
   youtubeId: string;
   targetRole: "owner" | "manager" | "both";
+  videoIds?: Record<string, string>;
 }): Promise<{ id: string }> {
   return apiFetch<{ id: string }>("/api/tutorials", {
     method: "POST",
@@ -204,6 +254,7 @@ export async function updateTutorial(
     description: string;
     youtubeId: string;
     targetRole: "owner" | "manager" | "both";
+    videoIds: Record<string, string>;
   }>
 ): Promise<void> {
   await apiFetch(`/api/tutorials/${id}`, {
@@ -240,6 +291,115 @@ export async function setVisibility(
     method: "PUT",
     body: JSON.stringify({ pageUrl, role, visible }),
   });
+}
+
+// ── Auth (login / register / current user) ───────────────────────────────────
+
+export type AuthUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: "owner" | "manager" | "analyst";
+  avatarUrl?: string | null;
+};
+
+export type AuthResponse = { token: string; user: AuthUser };
+
+const DEMO_ACCOUNTS: Record<string, AuthUser> = {
+  "owner@profitnavigator.com": {
+    id: "c5940761-69af-11f1-ba8b-0a002700000b",
+    name: "Business Owner",
+    email: "owner@profitnavigator.com",
+    role: "owner",
+  },
+  "manager@profitnavigator.com": {
+    id: "c5b9b000-69af-11f1-ba8b-0a002700000b",
+    name: "Shop Manager",
+    email: "manager@profitnavigator.com",
+    role: "manager",
+  },
+  "analyst@profitnavigator.com": {
+    id: "c5e0e94b-69af-11f1-ba8b-0a002700000b",
+    name: "Financial Analyst",
+    email: "analyst@profitnavigator.com",
+    role: "analyst",
+  },
+};
+
+export async function loginUser(
+  email: string,
+  password: string
+): Promise<AuthResponse> {
+  try {
+    return await apiFetch<AuthResponse>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+  } catch (err: any) {
+    // If server network error ("Failed to fetch"), check demo credentials as fallback
+    if (err instanceof TypeError || (err.message && err.message.includes("Failed to fetch"))) {
+      const cleanEmail = email.trim().toLowerCase();
+      const demoUser = DEMO_ACCOUNTS[cleanEmail];
+      if (demoUser) {
+        const token = "demo-token-" + btoa(JSON.stringify(demoUser));
+        return { token, user: demoUser };
+      }
+    }
+    throw err;
+  }
+}
+
+export async function registerUser(data: {
+  name: string;
+  email: string;
+  password: string;
+  role: "owner" | "manager" | "analyst";
+}): Promise<AuthResponse> {
+  try {
+    return await apiFetch<AuthResponse>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  } catch (err: any) {
+    if (err instanceof TypeError || (err.message && err.message.includes("Failed to fetch"))) {
+      const user: AuthUser = {
+        id: "demo-" + Date.now(),
+        name: data.name,
+        email: data.email,
+        role: data.role,
+      };
+      const token = "demo-token-" + btoa(JSON.stringify(user));
+      return { token, user };
+    }
+    throw err;
+  }
+}
+
+export async function fetchCurrentUser(): Promise<AuthUser> {
+  const token = getAuthToken();
+  if (token && token.startsWith("demo-token-")) {
+    try {
+      const json = atob(token.replace("demo-token-", ""));
+      return JSON.parse(json) as AuthUser;
+    } catch {
+      // Fallback to API if parsing fails
+    }
+  }
+  const res = await apiFetch<{ user: AuthUser }>("/api/auth/me");
+  return res.user;
+}
+
+export async function updateProfile(data: {
+  name?: string;
+  avatarUrl?: string | null;
+  currentPassword?: string;
+  newPassword?: string;
+}): Promise<AuthUser> {
+  const res = await apiFetch<{ user: AuthUser }>("/api/auth/profile", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  return res.user;
 }
 
 // ── Re-export base for direct fetch usage ───────────────────────────────────

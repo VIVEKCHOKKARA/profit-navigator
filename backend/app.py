@@ -11,6 +11,7 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 
 from realtime import socketio
+from routes.auth_routes import auth_bp
 from routes.transactions_routes import transactions_bp
 from routes.products_routes import products_bp
 from routes.chat_routes import chat_bp
@@ -31,6 +32,7 @@ CORS(app, origins="*")
 socketio.init_app(app)
 
 # ── Register Blueprints ──────────────────────────────────────────────────────
+app.register_blueprint(auth_bp, url_prefix="/api/auth")
 app.register_blueprint(transactions_bp, url_prefix="/api/transactions")
 app.register_blueprint(products_bp, url_prefix="/api/products")
 app.register_blueprint(chat_bp, url_prefix="/api/chat")
@@ -62,7 +64,44 @@ if __name__ == "__main__":
     def init_db_and_seed_tutorials():
         import json
         from db import query, execute
-        
+        from werkzeug.security import generate_password_hash
+
+        # 0. Ensure the users table exists and seed one demo account per role.
+        try:
+            execute(
+                "CREATE TABLE IF NOT EXISTS users ("
+                "id CHAR(36) NOT NULL DEFAULT (UUID()), "
+                "name VARCHAR(120) NOT NULL, "
+                "email VARCHAR(190) NOT NULL, "
+                "password_hash VARCHAR(255) NOT NULL, "
+                "role ENUM('owner','manager','analyst') NOT NULL, "
+                "avatar_url MEDIUMTEXT NULL, "
+                "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+                "PRIMARY KEY (id), UNIQUE KEY uq_users_email (email)"
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+            )
+            # Add avatar_url for databases created before profile photos existed.
+            try:
+                execute("ALTER TABLE users ADD COLUMN avatar_url MEDIUMTEXT NULL")
+            except Exception:
+                pass  # Column already exists.
+            DEFAULT_USERS = [
+                ("Business Owner", "owner@profitnavigator.com", "owner123", "owner"),
+                ("Shop Manager", "manager@profitnavigator.com", "manager123", "manager"),
+                ("Financial Analyst", "analyst@profitnavigator.com", "analyst123", "analyst"),
+            ]
+            for name, email, password, role in DEFAULT_USERS:
+                existing = query("SELECT id FROM users WHERE email = %s", (email,))
+                if not existing:
+                    execute(
+                        "INSERT INTO users (name, email, password_hash, role) "
+                        "VALUES (%s, %s, %s, %s)",
+                        (name, email, generate_password_hash(password), role),
+                    )
+            print(">>> Users table ready; default accounts seeded.")
+        except Exception as e:
+            print(f">>> Users seeding warning: {e}")
+
         # 1. Modify column width to text to ensure JSON translations fit
         try:
             execute("ALTER TABLE tutorials MODIFY title TEXT NOT NULL")
@@ -70,6 +109,13 @@ if __name__ == "__main__":
             print(">>> Database schema checked: tutorials columns modified to TEXT.")
         except Exception as e:
             print(f">>> Schema update warning: {e}")
+
+        # Add per-language video map for databases created before this feature.
+        try:
+            execute("ALTER TABLE tutorials ADD COLUMN video_ids JSON NULL")
+            print(">>> Database schema checked: tutorials.video_ids added.")
+        except Exception:
+            pass  # Column already exists.
 
         # 2. Seed default tutorials
         try:

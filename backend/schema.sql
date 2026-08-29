@@ -5,6 +5,19 @@
 CREATE DATABASE IF NOT EXISTS Lumina;
 USE Lumina;
 
+-- ── Users (authentication: owner / shop manager / financial analyst) ─────────
+CREATE TABLE IF NOT EXISTS users (
+    id            CHAR(36)       NOT NULL DEFAULT (UUID()),
+    name          VARCHAR(120)   NOT NULL,
+    email         VARCHAR(190)   NOT NULL,
+    password_hash VARCHAR(255)   NOT NULL,
+    role          ENUM('owner','manager','analyst') NOT NULL,
+    avatar_url    MEDIUMTEXT     NULL,
+    created_at    TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_users_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ── Transactions ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS transactions (
     id          CHAR(36)       NOT NULL DEFAULT (UUID()),
@@ -64,6 +77,9 @@ CREATE TABLE IF NOT EXISTS tutorials (
     description  TEXT          NULL,
     youtube_id   VARCHAR(20)   NOT NULL,
     target_role  ENUM('owner','manager','both') NOT NULL DEFAULT 'both',
+    -- Optional per-language YouTube IDs, e.g. {"hi":"abc","te":"xyz"}.
+    -- youtube_id remains the default (English) video / fallback.
+    video_ids    JSON          NULL,
     created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     INDEX idx_tutorials_role (target_role)
